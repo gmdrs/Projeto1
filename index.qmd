@@ -1,0 +1,331 @@
+---
+title: "Fatores Associados à Estocagem de Alimentos na Pandemia"
+subtitle: "Projeto I"
+author: "Gustavo Medeiros Marinho de Lima (gmmlima@id.uff.br)"
+format:
+  revealjs:
+    theme: default
+    background-color: '#c7d2fe'
+    transition: slide
+    slide-number: true
+    chalkboard: true
+    width: 1280
+    height: 720
+    font-size: 22
+    scrollable: true
+    title-slide-attributes:
+      data-background-image: "Capa.jpg"
+      data-background-size: "cover"
+      data-background-opacity: "0.35"
+execute:
+  echo: false
+  warning: false
+  message: false
+  
+---
+
+```{r setup}
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(vcd)
+library(rstatix)
+library(knitr)
+library(kableExtra)
+
+# carregando dados
+dados <- read_xlsx("Nutrição.xlsx")
+
+# ajustando variável resposta 
+dados <- dados |> 
+  mutate(
+    Estoque_Alimentos = factor(
+      Estoque_Alimentos, 
+      levels = c("Aumentou", "Diminuiu", "Não alterou", "Não tenho o hábito")
+    )
+  ) |> 
+  filter(!is.na(Estoque_Alimentos))
+
+totais <- table(dados$Estoque_Alimentos)
+pct_totais <- prop.table(totais) * 100
+cabecalhos <- paste0(names(totais), "<br>", totais, " (", round(pct_totais, 0), "%)")
+
+```
+
+---
+
+## Introdução
+
+### Contextualização e Objetivos
+
+  - *Impacto:* Alterações profundas nas dinâmicas sociais, econômicas, emocionais e no abastecimento familiar durante a COVID-19.
+  - *Foco:* Avaliar as mudanças no comportamento de *manter estoque de alimentos* no domicílio.
+  - Quais características sociais, econômicas, e de saúde mental influenciaram na estocagem de alimentos durante a pandemia?
+
+
+---
+
+## Metodologia — Dados e Variáveis
+
+::: {.columns}
+
+::: {.column width="45%"}
+### Origem dos Dados e Amostra
+  - Pesquisa conduzida por pós-graduandas em Nutrição da UFF em 2022.
+  - Amostra com 2.155 indivíduos adultos.
+:::
+
+::: {.column width="55%"}
+### Definição das Variáveis
+  - *Variável Resposta:* *`Estoque_Alimentos`* (Aumentou, Diminuiu, Não alterou, Não tenho o hábito).
+  - *Qualitativas Explicativas:* Genero$^Q$, Raca_cor$^Q$, Regiao$^Q$, Isolamento$^F$, Trabalha$^F$, Renda_familiar$^Q$, Escolaridade$^Q$, Covid$^F$, Consulta_Nutricionista$^F$, Dificuldade_Financeira$^F$, cigarro$^F$, Ansiedade$^F$, Depressao$^F$, Insonia$^F$, Enxaqueca$^F$.
+  - *Quantitativas Explicativas:* Idade, Peso, Altura e IMC.
+:::
+
+:::
+
+
+---
+
+## Metodologia — Análise Estatística
+
+::: {.columns}
+
+::: {.column width="50%"}
+### Variáveis Qualitativas ($\alpha = 5\%$)
+  - Frequências Absolutas e Porcentagens.
+  - Teste Qui-Quadrado de Independência.
+  - *V de Cramér*.
+  - Resíduos Padronizados Ajustados.
+:::
+
+::: {.column width="50%"}
+### Variáveis Quantitativas ($\alpha = 5\%$)
+  - Medidas resumo: Média e Desvio Padrão.
+  - *Teste de Kruskal-Wallis*.
+:::
+
+:::
+
+
+---
+
+## Resultados — Variáveis Qualitativas {.scrollable}
+
+```{r tabela-qualitativa-completa}
+gerar_linha_qualitativa <- function(df, var_nome, var_label, tipo = "Q") {
+  tab <- table(df[[var_nome]], df$Estoque_Alimentos)
+  if(nrow(tab) == 0) return(NULL)
+  
+  tab_pct <- prop.table(tab, margin = 1) * 100
+  chi <- chisq.test(tab)
+  p_val_num <- chi$p.value
+  p_val_txt <- format.pval(p_val_num, digits = 3, eps = 0.001)
+  cramer_num <- assocstats(tab)$cramer
+  cramer_txt <- sprintf("%.3f", cramer_num)
+  stdres <- chi$stdres
+  
+  # destaque em negrito apenas se p < 0.05
+  p_val_fmt <- if (!is.na(p_val_num) && p_val_num < 0.05) paste0("<b>", p_val_txt, "</b>") else p_val_txt
+  cramer_fmt <- if (!is.na(p_val_num) && p_val_num < 0.05) paste0("<b>", cramer_txt, "</b>") else cramer_txt
+  
+  linha_titulo <- data.frame(
+    Categoria = paste0("<b>", var_label, "<sup>", tipo, "</sup></b>"),
+    Col1 = "", Col2 = "", Col3 = "", Col4 = "",
+    Valor_p = p_val_fmt,
+    Cramer = cramer_fmt,
+    stringsAsFactors = FALSE
+  )
+  
+  categorias <- rownames(tab)
+  linhas_sub <- data.frame()
+  
+  for (i in seq_along(categorias)) {
+    vals <- sapply(1:ncol(tab), function(j) {
+      n_val <- tab[i, j]
+      pct_val <- round(tab_pct[i, j], 1)
+      res_val <- stdres[i, j]
+      
+      texto <- paste0(n_val, " (", pct_val, "%)")
+      if (!is.na(res_val) && abs(res_val) > 1.96) {
+        texto <- paste0("<b>", texto, "*</b>")
+      }
+      texto
+    })
+    
+    linha_sub <- data.frame(
+      Categoria = paste0("&nbsp;&nbsp;&nbsp;&nbsp;", categorias[i]),
+      Col1 = vals[1], Col2 = vals[2], Col3 = vals[3], Col4 = vals[4],
+      Valor_p = "", Cramer = "",
+      stringsAsFactors = FALSE
+    )
+    linhas_sub <- rbind(linhas_sub, linha_sub)
+  }
+  
+  rbind(linha_titulo, linhas_sub)
+}
+
+vars_qualitativas_todas <- list(
+  c("Genero", "Gênero", "Q"),
+  c("Raca_cor", "Raça/Cor Autodeclarada", "Q"),
+  c("Regiao", "Região de Residência", "Q"),
+  c("Isolamento", "Isolamento Social na Pandemia", "F"),
+  c("Trabalha", "Situação de Trabalho", "F"),
+  c("Renda_familiar", "Renda Familiar", "Q"),
+  c("Escolaridade", "Nível de Escolaridade", "Q"),
+  c("Covid", "Diagnóstico de COVID-19", "F"),
+  c("Consulta_Nutricionista", "Consulta com Nutricionista", "F"),
+  c("Dificuldade_Financeira", "Dificuldade Financeira", "F"),
+  c("cigarro", "Hábito de Fumar", "F"),
+  c("Ansiedade", "Relato de Ansiedade na Pandemia", "F"),
+  c("Depressao", "Relato de Depressão na Pandemia", "F"),
+  c("Insonia", "Relato de Insônia na Pandemia", "F"),
+  c("Enxaqueca", "Relato de Enxaqueca na Pandemia", "F")
+)
+
+tabela_qualitativa_completa <- do.call(rbind, lapply(vars_qualitativas_todas, function(v) {
+  gerar_linha_qualitativa(dados, v[1], v[2], v[3])
+}))
+
+colnames(tabela_qualitativa_completa) <- c("Variáveis Qualitativas", cabecalhos, "P-Valor", "Cramér")
+
+tabela_qualitativa_completa |> 
+  kable(
+    format = "html", 
+    escape = FALSE, 
+    align = c("l", "c", "c", "c", "c", "c", "c"),
+    caption = "<b>Associação entre Variáveis Qualitativas e a Estocagem de Alimentos</b>"
+  ) |> 
+  kable_styling(
+    bootstrap_options = c("hover", "condensed"), 
+    full_width = TRUE, 
+    font_size = 20
+  ) |> 
+  add_header_above(c(" " = 1, "Estoque de Alimentos" = 4, " " = 2))
+```
+
+---
+
+## Resultados — Variáveis Quantitativas
+
+```{r tabela-quantitativa-completa}
+gerar_linha_quantitativa <- function(df, var_nome, var_label) {
+  kw <- kruskal.test(df[[var_nome]] ~ df$Estoque_Alimentos)
+  p_val_num <- kw$p.value
+  p_val_txt <- format.pval(p_val_num, digits = 3, eps = 0.001)
+  
+  # Destaque em negrito apenas se p < 0.05
+  p_val_fmt <- if (!is.na(p_val_num) && p_val_num < 0.05) paste0("<b>", p_val_txt, "</b>") else p_val_txt
+  
+  resumo <- df |> 
+    group_by(Estoque_Alimentos) |> 
+    summarise(
+      Media_SD = paste0(round(mean(.data[[var_nome]], na.rm = TRUE), 2), " (", round(sd(.data[[var_nome]], na.rm = TRUE), 2), ")")
+    )
+  
+  data.frame(
+    Variável = var_label,
+    Aumentou = resumo$Media_SD[resumo$Estoque_Alimentos == "Aumentou"],
+    Diminuiu = resumo$Media_SD[resumo$Estoque_Alimentos == "Diminuiu"],
+    Nao_alterou = resumo$Media_SD[resumo$Estoque_Alimentos == "Não alterou"],
+    Nao_tenho_habito = resumo$Media_SD[resumo$Estoque_Alimentos == "Não tenho o hábito"],
+    Valor_p = p_val_fmt,
+    Teste = "Kruskal-Wallis",
+    stringsAsFactors = FALSE
+  )
+}
+
+vars_quantitativas_todas <- list(
+  c("Idade", "Idade (anos) — Média (DP)"),
+  c("Peso", "Peso (kg) — Média (DP)"),
+  c("Altura", "Altura (m) — Média (DP)"),
+  c("IMC", "IMC (kg/m²) — Média (DP)")
+)
+
+tabela_quantitativa_completa <- do.call(rbind, lapply(vars_quantitativas_todas, function(v) {
+  gerar_linha_quantitativa(dados, v[1], v[2])
+}))
+
+colnames(tabela_quantitativa_completa) <- c("Variáveis Quantitativas", cabecalhos, "P-Valor", "Teste Utilizado")
+
+tabela_quantitativa_completa |> 
+  kable(
+    format = "html", 
+    escape = FALSE, 
+    align = c("l", "c", "c", "c", "c", "c", "c"),
+    caption = "<b>Comparação entre as Variáveis Quantitativas e a Estocagem de Alimentos</b>"
+  ) |> 
+  kable_styling(
+    bootstrap_options = c("hover", "condensed"), 
+    full_width = TRUE, 
+    font_size = 20
+  ) |> 
+  add_header_above(c(" " = 1, "Estoque de Alimentos" = 4, " " = 2))
+```
+
+---
+
+## Conclusão
+
+::: {.columns}
+
+::: {.column width="50%"}
+[Fatores Determinantes]{style="font-size: 1.3em; font-weight: normal; display: block; margin-bottom: 15px;"}
+  
+  - A renda familiar foi o principal divisor: famílias de maior renda aumentaram estoques ($39\%$), enquanto as de menor renda reduziram ($37{,}1\%$).
+  - O *Isolamento Social* impulsionou a necessidade de maior abastecimento doméstico ($p < 0{,}01$).
+  - Condições como *Ansiedade*, *Depressão* e *Insônia* associaram-se à alteração no padrão de estocagem ($p < 0{,}01$).
+:::
+
+::: {.column width="50%"}
+[Perfil Biométrico e Implicações]{style="font-size: 1.3em; font-weight: normal; display: block; margin-bottom: 15px;"}
+
+  - Maior média de idade ($35{,}2$ anos) e maior IMC ($25{,}9\text{ kg/m}^2$) no grupo que *aumentou* a estocagem de alimentos ($p < 0{,}05$).
+  
+  - A estocagem serviu como *"proteção"* para quem possuía recursos econômicos e *resposta ao estresse* psicológico do período.
+:::
+
+:::
+
+
+::: {.column-screen style="display: flex; justify-content: center; align-items: center; height: 80vh;"}
+# Fim
+:::
+
+
+
+
+
+
+
+<style>
+/* tamanho base global */
+.reveal {
+  font-size: 28px;
+}
+
+/* subtítulos (###) */
+.reveal h3 {
+  font-size: 1.3em; /* 1,3x base = ~36px */
+}
+
+/* parágrafos e listas (tópicos) */
+.reveal p, .reveal li {
+  font-size: 0.9em; /* 0,9x base = ~25px */
+}
+
+.reveal h2 {
+  margin-bottom: 50px !important; /* Ajuste o valor (ex: 40px, 50px, 60px) conforme desejar */
+}
+
+.reveal h3 {
+  font-size: 1.3em;
+  margin-bottom: 30px; /* Opcional: espaçamento abaixo dos subtítulos */
+}
+
+.reveal .columns {
+  display: flex !important;
+  gap: 40px !important; /* Ajuste o valor (ex: 40px, 60px, 80px) conforme o espaçamento desejado */
+}
+</style>
+
